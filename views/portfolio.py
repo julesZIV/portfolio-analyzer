@@ -54,6 +54,9 @@ except Exception as e:
     st.stop()
 
 tickers = [t for t in tickers if t in all_prices.columns]
+if len(tickers) < 2:
+    st.write("pas assez de donnees sur cette periode, il faut au moins 2 actions avec des prix")
+    st.stop()
 prices = all_prices[tickers]
 bench = all_prices[BENCHMARK] if BENCHMARK in all_prices else None
 
@@ -66,6 +69,9 @@ def live():
         q = quotes(tuple(tickers))
     except Exception as e:
         st.write("pas de prix", e)
+        return
+    if q.empty:
+        st.write("pas de prix")
         return
     st.write("maj", datetime.now().strftime("%H:%M:%S"))
     cols = st.columns(len(q))

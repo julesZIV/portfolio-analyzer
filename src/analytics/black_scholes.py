@@ -27,7 +27,7 @@ def black_scholes_price(S, K, T, r, sigma, option_type="call", q=0.0):
 def vega(S, K, T, r, sigma, q=0.0):
     #vega = cours actuel actualise du dividende * densite de la loi N CR en d1 * racine du temps restant
     d1, _ = _d1_d2(S, K, T, r, sigma, q)
-    return S*np.exp(-q*T)*norm.pdf(d1)*np.sqrt(T) #par point
+    return S*np.exp(-q*T)*norm.pdf(d1)*np.sqrt(T) #pour +1.00 de vol (diviser par 100 pour +1 pt)
 
 def parity_price(S, K, T, r, option_type="call", q=0.0):
     #parite call-put : renvoie C - P pour "call" et P - C pour "put" (pas le prix d'une option seule)
@@ -86,9 +86,9 @@ def borne_arbitrage(S, K, T, r, market_price, option_type="call", q=0.0):
 def rho(S, K, T, r, sigma, option_type="call", q=0.0):
     d1, d2 = _d1_d2(S, K, T, r, sigma, q)
     if option_type=="call":
-        return K*T*np.exp(-r*T)*norm.cdf(d2)   #par point de taux
+        return K*T*np.exp(-r*T)*norm.cdf(d2)   #pour +1.00 de taux (diviser par 100 pour +1 pt)
     elif option_type=="put":
-        return -K*T*np.exp(-r*T)*norm.cdf(-d2)#par point de taux
+        return -K*T*np.exp(-r*T)*norm.cdf(-d2)  #pour +1.00 de taux (diviser par 100 pour +1 pt)
     else:
         raise ValueError(f"option_type inconnu : {option_type}")
 
@@ -108,8 +108,8 @@ def delta(S, K, T, r, sigma, option_type="call", q=0.0):
 def theta(S, K, T, r, sigma, option_type="call", q=0.0):
     d1, d2 = _d1_d2(S, K, T, r, sigma, q)
     if option_type=="call":
-        return (-S*np.exp(-q*T)*norm.pdf(d1)*sigma/(2*np.sqrt(T)) - r*K*np.exp(-r*T)*norm.cdf(d2) + q*S*np.exp(-q*T)*norm.cdf(d1))  #par jour
+        return (-S*np.exp(-q*T)*norm.pdf(d1)*sigma/(2*np.sqrt(T)) - r*K*np.exp(-r*T)*norm.cdf(d2) + q*S*np.exp(-q*T)*norm.cdf(d1))  #par an (diviser par 365 pour un theta par jour)
     elif option_type=="put":
-        return (-S*np.exp(-q*T)*norm.pdf(d1)*sigma/(2*np.sqrt(T)) + r*K*np.exp(-r*T)*norm.cdf(-d2) - q*S*np.exp(-q*T)*norm.cdf(-d1))#par jour
+        return (-S*np.exp(-q*T)*norm.pdf(d1)*sigma/(2*np.sqrt(T)) + r*K*np.exp(-r*T)*norm.cdf(-d2) - q*S*np.exp(-q*T)*norm.cdf(-d1))  #par an (diviser par 365 pour un theta par jour)
     else:
         raise ValueError(f"option_type inconnu : {option_type}")  

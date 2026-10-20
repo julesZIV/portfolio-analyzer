@@ -36,7 +36,7 @@ def alpha(prices, benchmark_prices, risk_free_rate=0.0):
     beta_value = returns.apply(lambda r: r.cov(benchmark_returns) / benchmark_returns.var())
     excess_return = returns.mean() - risk_free_rate / 252
     benchmark_excess_return = benchmark_returns.mean() - risk_free_rate / 252
-    return excess_return - beta_value * benchmark_excess_return
+    return (excess_return - beta_value * benchmark_excess_return) * 252
 
 
 def beta(prices, benchmark_prices):

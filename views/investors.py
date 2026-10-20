@@ -154,6 +154,9 @@ with tab_copy:
     prices = prices.loc[start[-1]:] if len(start) else prices
     priced = [t for t in prices.columns if prices[t].notna().all()]
     copy = copy[copy["ticker"].isin(priced)]
+    if copy.empty or SP500 not in prices.columns:
+        st.info("No price data for these positions yet, so the copy cannot be tracked.")
+        st.stop()
     coverage = copy["value"].sum() / current["value"].sum()
 
     value = (prices[copy["ticker"]] * copy["shares"].values).sum(axis=1)

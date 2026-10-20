@@ -31,8 +31,12 @@ def chain(ticker, expiry):
 def implied_dividend(calls, puts, S, T, r):
     #q implicite par la parite call-put sur les strikes proches de la monnaie : C - P = S e^{-qT} - K e^{-rT}
     c = calls.set_index("strike"); p = puts.set_index("strike")
-    strikes = sorted(c.index.intersection(p.index), key=lambda k: abs(k - S))[:6]
+    quoted = [k for k in c.index.intersection(p.index)
+              if min(c.bid[k], c.ask[k], p.bid[k], p.ask[k]) > 0]
+    strikes = sorted(quoted, key=lambda k: abs(k - S))[:6]
     fwd = [(c.bid[k] + c.ask[k]) / 2 - (p.bid[k] + p.ask[k]) / 2 + k * np.exp(-r * T) for k in strikes]
+    if not fwd or np.median(fwd) <= 0: #pas assez de cotations exploitables : on suppose q = 0
+        return 0.0
     return -np.log(np.median(fwd) / S) / T
 
 
@@ -105,4 +109,4 @@ with real:
                "Les options sur actions americaines peuvent etre exercees avant l'echeance, ce que Black-Scholes ignore.")
 
     with st.expander("tableau"):
-        st.dataframe(res.style.format({"bid": "{:.2f}", "ask": "{:.2f}", "mid": "{:.2f}", "iv": "{:.2%}", "iv_yahoo": "{:.2%}"}), width="stretch")
+        st.dataframe(res.style.format({"bid": "{:.2f}", "ask": "{:.2f}", "mid": "{:.2f}", "iv": "{:.2%}", "iv_yahoo": "{:.2%}"}, na_rep="–"), width="stretch")

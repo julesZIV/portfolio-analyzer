@@ -85,7 +85,7 @@ chart(
     "at a glance. Color only shows direction: blue is up, red is down.",
     f"{(perf_assets > 0).sum()} of {len(perf_assets)} assets are up. Best: {NAMES[perf_assets.idxmax()]} "
     f"({perf_assets.max():+.1%}). Worst: {NAMES[perf_assets.idxmin()]} ({perf_assets.min():+.1%}). "
-    f"The S&P 500 is at {perf[SP500]:+.1%}.",
+    + (f"The S&P 500 is at {perf[SP500]:+.1%}." if SP500 in perf else ""),
 )
 st.divider()
 selection = st.multiselect(
