@@ -251,3 +251,33 @@ def vol_smile(df, spot):
     fig = _layout(fig, "Implied volatility", ".0%", height=450)
     fig.update_xaxes(title_text="Strike")
     return fig
+
+
+def vol_surface(df, n_grid=40):
+    from scipy.interpolate import griddata
+    m = np.linspace(df["moneyness"].min(), df["moneyness"].max(), n_grid)
+    t = np.linspace(df["T"].min(), df["T"].max(), n_grid)
+    M, T = np.meshgrid(m, t)  #forme (len(t), len(m)) : ce que go.Surface attend pour z
+    Z = griddata((df["moneyness"], df["T"]), df["iv"], (M, T), method="linear")
+
+    fig = go.Figure()
+    fig.add_trace(go.Surface(
+        x=m, y=t, z=Z, colorscale="Viridis", opacity=0.9, name="Surface",
+        colorbar=dict(title="IV", tickformat=".0%", len=0.7),
+        hovertemplate="K/S %{x:.2f}<br>T %{y:.2f} years<br>IV %{z:.1%}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter3d(
+        x=df["moneyness"], y=df["T"], z=df["iv"], mode="markers", name="Market",
+        marker=dict(size=2, color=GRAY),
+        hovertemplate="K/S %{x:.2f}<br>T %{y:.2f} years<br>IV %{z:.1%}<extra></extra>",
+    ))
+    fig.update_layout(
+        height=650, margin=dict(l=0, r=0, t=30, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        scene=dict(
+            xaxis_title="Moneyness K/S", yaxis_title="Maturity (years)", zaxis_title="Implied vol",
+            zaxis=dict(tickformat=".0%"),
+            camera=dict(eye=dict(x=1.6, y=-1.6, z=0.8)),
+        ),
+    )
+    return fig

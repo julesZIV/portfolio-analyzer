@@ -39,52 +39,97 @@ def implied_dividend(calls, puts, S, T, r):
         return 0.0
     return -np.log(np.median(fwd) / S) / T
 
+def echeance(ticker, expiry, S, r):
+    calls, puts = chain(ticker, expiry)
+    T = max(((datetime.strptime(expiry, "%Y-%m-%d") - datetime.now()).days + 0.7) / 365, 1 / 365)
+    q = implied_dividend(calls, puts, S, T, r)
+    rows = []
+    for typ, df in (("call", calls), ("put", puts)):
+        df = df[(df.bid > 0) & (df.ask > 0)]
+        for _, o in df.iterrows():
+            mid = (o.bid + o.ask) / 2
+            lo, hi = borne_arbitrage(S, o.strike, T, r, mid, typ, q)
+            rows.append(dict(type=typ, strike=o.strike, bid=o.bid, ask=o.ask, mid=mid,
+                             iv=implied_volatility(S, o.strike, T, r, mid, typ, q), iv_yahoo=o.impliedVolatility,
+                             in_bounds=lo <= mid <= hi, T=T))
+    return pd.DataFrame(rows)
 
-st.title("options black-scholes")
-pricer, real = st.tabs(["pricer", "chaine reelle"])
+
+@st.cache_data(ttl=600)
+def surface_points(ticker, n_expiries, width, min_days=7):
+    S, r = spot_and_rate(ticker)
+    now = datetime.now()
+    exps = [e for e in expiries(ticker) if (datetime.strptime(e, "%Y-%m-%d") - now).days >= min_days][:n_expiries]
+    df = pd.concat([echeance(ticker, e, S, r) for e in exps], ignore_index=True)
+    #options OTM uniquement : puts sous le spot, calls au-dessus (plus liquides, pas de doublon par strike)
+    otm = ((df.type == "put") & (df.strike < S)) | ((df.type == "call") & (df.strike >= S))
+    df = df[otm & df.in_bounds & (df.strike > (1 - width) * S) & (df.strike < (1 + width) * S)].dropna(subset=["iv"])
+    df["moneyness"] = df.strike / S
+    return df, S
+
+st.title("Options (Black-Scholes)")
+pricer, real, surface = st.tabs(["Pricer", "Real chain", "Vol surface"])
 afficher_profil()
 with pricer:
     c1, c2, c3 = st.columns(3)
-    S = c1.number_input("prix du sous-jacent S", value=100.0, min_value=0.01)
-    K = c1.number_input("strike K", value=100.0, min_value=0.01)
-    T = c2.number_input("maturite T (annees)", value=0.5, min_value=0.01, step=0.05)
-    r = c2.number_input("taux sans risque r", value=0.03, step=0.005, format="%.3f")
-    sigma = c3.number_input("volatilite sigma", value=0.20, min_value=0.01, step=0.01)
-    q = c3.number_input("dividende q", value=0.0, step=0.005, format="%.3f")
+    S = c1.number_input("Underlying price S", value=100.0, min_value=0.01)
+    K = c1.number_input("Strike K", value=100.0, min_value=0.01)
+    T = c2.number_input("Maturity T (years)", value=0.5, min_value=0.01, step=0.05)
+    r = c2.number_input("Risk-free rate r", value=0.03, step=0.005, format="%.3f")
+    sigma = c3.number_input("Volatility sigma", value=0.20, min_value=0.01, step=0.01)
+    q = c3.number_input("Dividend yield q", value=0.0, step=0.005, format="%.3f")
 
     call = black_scholes_price(S, K, T, r, sigma, "call", q)
     put = black_scholes_price(S, K, T, r, sigma, "put", q)
     m1, m2, m3 = st.columns(3)
-    m1.metric("call", f"{call:.2f}")
-    m2.metric("put", f"{put:.2f}")
-    m3.metric("vega (pour +1 pt de vol)", f"{vega(S, K, T, r, sigma, q) / 100:.3f}")
+    m1.metric("Call", f"{call:.2f}")
+    m2.metric("Put", f"{put:.2f}")
+    m3.metric("Vega (per +1 vol pt)", f"{vega(S, K, T, r, sigma, q) / 100:.3f}")
 
     spots = np.linspace(0.5 * K, 1.5 * K, 200)
     st.plotly_chart(charts.option_prices(spots, black_scholes_price(spots, K, T, r, sigma, "call", q),  black_scholes_price(spots, K, T, r, sigma, "put", q), S, K),
                     width="stretch")
 
+with surface:
+    c1, c2, c3 = st.columns(3)
+    ticker_s = c1.text_input("Ticker", value="SPY", key="surface_ticker").strip().upper()
+    n_exp = c2.slider("Number of expiries", 3, 15, 8)
+    width_s = c3.slider("Strikes around spot (%)", 5, 50, 20, key="surface_width") / 100
+    #pas de st.stop() ici : il couperait aussi le rendu de l'onglet "chaine reelle"
+    try:
+        pts, S_s = surface_points(ticker_s, n_exp, width_s)
+    except Exception as e:
+        pts, S_s = None, None
+        st.write("Error:", e)
+    if pts is not None and (pts["T"].nunique() < 2 or len(pts) < 10):
+        st.write("Not enough points to build a surface")
+    elif pts is not None:
+        st.plotly_chart(charts.vol_surface(pts), width="stretch")
+        st.caption(f"{len(pts)} OTM options across {pts['T'].nunique()} expiries, linear interpolation between market points. "
+                   f"Spot: {S_s:.2f}")
+
 with real:
     c1, c2, c3 = st.columns(3)
-    ticker = c1.text_input("ticker", value="SPY").strip().upper()
+    ticker = c1.text_input("Ticker", value="SPY").strip().upper()
     try:
         exps = expiries(ticker)
         S, r = spot_and_rate(ticker)
     except Exception as e:
-        st.write("erreur :", e)
+        st.write("Error:", e)
         st.stop()
     if not exps:
-        st.write("pas d'options cotees pour ce ticker")
+        st.write("No listed options for this ticker")
         st.stop()
 
     now = datetime.now()
     default = min(range(len(exps)), key=lambda i: abs((datetime.strptime(exps[i], "%Y-%m-%d") - now).days - 30))
-    expiry = c2.selectbox("echeance", exps, index=default)
-    width = c3.slider("strikes autour du spot (%)", 5, 30, 10) / 100
-    q_mode = c3.radio("dividende q", ["implicite (parite)", "0"], horizontal=True)
+    expiry = c2.selectbox("Expiry", exps, index=default)
+    width = c3.slider("Strikes around spot (%)", 5, 30, 10) / 100
+    q_mode = c3.radio("Dividend yield q", ["Implied (parity)", "0"], horizontal=True)
 
     T = max(((datetime.strptime(expiry, "%Y-%m-%d") - now).days + 0.7) / 365, 1 / 365)
     calls, puts = chain(ticker, expiry)
-    q = implied_dividend(calls, puts, S, T, r) if q_mode.startswith("implicite") else 0.0
+    q = implied_dividend(calls, puts, S, T, r) if q_mode.startswith("Implied") else 0.0
 
     rows = []
     for typ, df in (("call", calls), ("put", puts)):
@@ -95,18 +140,18 @@ with real:
             rows.append(dict(type=typ, strike=o.strike, bid=o.bid, ask=o.ask, mid=mid, iv=implied_volatility(S, o.strike, T, r, mid, typ, q), iv_yahoo=o.impliedVolatility, in_bounds=lo <= mid <= hi))
     res = pd.DataFrame(rows)
     if res.empty:
-        st.write("aucune option avec bid/ask sur cette plage")
+        st.write("No options with a bid/ask in this range")
         st.stop()
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("spot", f"{S:.2f}")
-    m2.metric("taux r (^IRX)", f"{r:.2%}")
-    m3.metric("dividende q", f"{q:.2%}")
-    m4.metric("hors bornes d'arbitrage", f"{(~res.in_bounds).sum()} / {len(res)}")
+    m1.metric("Spot", f"{S:.2f}")
+    m2.metric("Rate r (^IRX)", f"{r:.2%}")
+    m3.metric("Dividend yield q", f"{q:.2%}")
+    m4.metric("Outside arbitrage bounds", f"{(~res.in_bounds).sum()} / {len(res)}")
 
     st.plotly_chart(charts.vol_smile(res[res.in_bounds], S), width="stretch")
-    st.caption("q implicite = dividende + decalage horaire entre le cours de cloture et les cotations d'options. "
-               "Les options sur actions americaines peuvent etre exercees avant l'echeance, ce que Black-Scholes ignore.")
+    st.caption("Implied q = dividend + timing gap between the closing price and the option quotes. "
+               "US equity options are American and can be exercised before expiry, which Black-Scholes ignores.")
 
-    with st.expander("tableau"):
+    with st.expander("Table"):
         st.dataframe(res.style.format({"bid": "{:.2f}", "ask": "{:.2f}", "mid": "{:.2f}", "iv": "{:.2%}", "iv_yahoo": "{:.2%}"}, na_rep="–"), width="stretch")

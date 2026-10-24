@@ -35,14 +35,14 @@ def optimize(prices, rf):
     return (monte_carlo(ret, cov, rf, n_sim=3000), efficient_frontier(ret, cov, n_points=40),max_sharpe(ret, cov, rf), min_variance(ret, cov), ret, cov)
 
 
-st.title("portfolio cac 40")
-st.write("choisir des actions et une periode")
+st.title("My CAC 40 portfolio")
+st.write("Pick some stocks and a period")
 afficher_profil()
-tickers = st.multiselect("actions", list(CAC40), default=["MC.PA", "TTE.PA", "AIR.PA", "SAN.PA", "BNP.PA"],format_func=lambda t: CAC40[t]["name"], max_selections=8)
-period = st.selectbox("periode", list(PERIODS), index=2)
+tickers = st.multiselect("Stocks", list(CAC40), default=["MC.PA", "TTE.PA", "AIR.PA", "SAN.PA", "BNP.PA"],format_func=lambda t: CAC40[t]["name"], max_selections=8)
+period = st.selectbox("Period", list(PERIODS), index=2)
 
 if len(tickers) < 2:
-    st.write("il faut au moins 2 actions")
+    st.write("Select at least 2 stocks")
     st.stop()
 
 colors = assign_colors(tickers, "colors_portfolio")
@@ -50,12 +50,12 @@ colors = assign_colors(tickers, "colors_portfolio")
 try:
     all_prices = history(tuple(tickers), (date.today() - timedelta(days=PERIODS[period])).isoformat())
 except Exception as e:
-    st.write("erreur :", e)
+    st.write("Error:", e)
     st.stop()
 
 tickers = [t for t in tickers if t in all_prices.columns]
 if len(tickers) < 2:
-    st.write("pas assez de donnees sur cette periode, il faut au moins 2 actions avec des prix")
+    st.write("Not enough data for this period: at least 2 stocks with prices are needed")
     st.stop()
 prices = all_prices[tickers]
 bench = all_prices[BENCHMARK] if BENCHMARK in all_prices else None
@@ -64,16 +64,16 @@ bench = all_prices[BENCHMARK] if BENCHMARK in all_prices else None
 # prix en direct
 @st.fragment(run_every=REFRESH)
 def live():
-    st.write("### prix live")
+    st.write("### Live prices")
     try:
         q = quotes(tuple(tickers))
     except Exception as e:
-        st.write("pas de prix", e)
+        st.write("No prices available", e)
         return
     if q.empty:
-        st.write("pas de prix")
+        st.write("No prices available")
         return
-    st.write("maj", datetime.now().strftime("%H:%M:%S"))
+    st.write("Updated", datetime.now().strftime("%H:%M:%S"))
     cols = st.columns(len(q))
     for i, t in enumerate(q.index):
         cols[i].metric(NAMES.get(t, t), round(q.loc[t, "last"], 2), f"{q.loc[t, 'change']:.2%}")
@@ -94,43 +94,43 @@ if bench is not None:
     bench_stats = {"return": annual_return(bench.to_frame()).iloc[0], "volatility": volatility(bench.to_frame()).iloc[0]}
 
 # perf
-st.write("### performance")
-st.write("base 100 au debut de la periode, la ligne grise c'est le cac 40")
+st.write("### Performance")
+st.write("Base 100 at the start of the period, the gray line is the CAC 40")
 st.plotly_chart(charts.base_100(prices, colors, NAMES, bench, "CAC 40"))
 perf = prices.iloc[-1] / prices.iloc[0] - 1
-st.write("perf sur la periode :")
+st.write("Performance over the period:")
 st.write(perf.rename(index=NAMES))
 
 # risque
-st.write("### risque")
-st.write("rendement vs volatilité (en haut a gauche = mieux)")
+st.write("### Risk")
+st.write("Return vs volatility (top left = better)")
 st.plotly_chart(charts.risk_return(stats.rename(columns={"vol": "volatility"}), colors, NAMES, bench_stats, "CAC 40"))
-st.write("drawdown = combien ca a baissé depuis le plus haut")
+st.write("Drawdown = how far the price has fallen from its peak")
 st.plotly_chart(charts.drawdowns(drawdown(prices), colors, NAMES, drawdown(bench) if bench is not None else None, "CAC 40"))
-st.write("tableau des stats")
+st.write("Statistics")
 st.dataframe(stats.rename(index=NAMES))
 
 # correl
-st.write("### correlation")
-st.write("rouge = bougent pareil, bleu = inverse")
+st.write("### Correlation")
+st.write("Red = move together, blue = move in opposite directions")
 st.plotly_chart(charts.correlations(daily_returns(prices), NAMES))
 
 # markowitz
-st.write("### optimisation (markowitz)")
+st.write("### Optimization (Markowitz)")
 try:
     cloud, front, w_sharpe, w_minvar, ret, cov = optimize(prices, RISK_FREE)
 except Exception as e:
-    st.write("optim a planté", e)
+    st.write("Optimization failed", e)
 else:
     r_s, v_s = portfolio_performance(w_sharpe, ret, cov)
     r_m, v_m = portfolio_performance(w_minvar, ret, cov)
-    st.write("points gris = portefeuilles random, ligne bleue = frontiere efficiente")
+    st.write("Gray dots = random portfolios, blue line = efficient frontier")
     st.plotly_chart(charts.frontier(cloud, front, stats[["return", "vol"]].rename(columns={"vol": "volatility"}),colors, NAMES, (v_s, r_s), (v_m, r_m)))
-    st.write("max sharpe : rendement", round(r_s, 3), "vol", round(v_s, 3))
-    st.write("min variance : rendement", round(r_m, 3), "vol", round(v_m, 3))
+    st.write("Max Sharpe: return", round(r_s, 3), "vol", round(v_s, 3))
+    st.write("Min variance: return", round(r_m, 3), "vol", round(v_m, 3))
     weights = pd.DataFrame({"max sharpe": w_sharpe, "min var": w_minvar}, index=prices.columns)
-    st.write("poids :")
+    st.write("Weights:")
     st.plotly_chart(charts.weights(weights, NAMES))
     st.write(weights.rename(index=NAMES))
 
-st.write("donnees yahoo finance, pas un conseil")
+st.write("Data from Yahoo Finance. Not investment advice.")
